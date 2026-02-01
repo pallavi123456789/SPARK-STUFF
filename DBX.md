@@ -524,10 +524,320 @@ SELECT * FROM users_delta VERSION AS OF 5
 
 ---
 
-This **Top 50** gives you everything for **FAANG / Big Tech Databricks interviews**, from PySpark coding, Delta Lake, performance tuning, UI debugging, to ML pipelines.
+Absolutely! Let’s dive into **PySpark Streaming + Kafka** — this is a hot topic in **FAANG and enterprise interviews**. I’ll structure it into **conceptual + code + UI/performance + real-world scenarios**, with **interview-ready answers**.
 
 ---
 
-If you want, I can make a **📸 “Databricks Interview Cheat Sheet” PDF** with **UI screenshots + code snippets + quick fix map**, perfect for **last-minute prep or printing**.
+# 🧠 PYSPARK STREAMING + KAFKA INTERVIEW Q&A
 
-Do you want me to make that next?
+---
+
+## **1️⃣ Streaming Basics**
+
+### Q1: What is PySpark Streaming?
+
+**Answer:**
+
+> “PySpark Streaming allows processing of live data streams using Spark’s structured streaming API. It supports micro-batch or continuous processing with fault tolerance and exactly-once semantics.”
+
+---
+
+### Q2: Difference between DStream and Structured Streaming?
+
+| Feature         | DStream       | Structured Streaming   |
+| --------------- | ------------- | ---------------------- |
+| API             | RDD-based     | DataFrame / Dataset    |
+| Fault-tolerance | Checkpointing | WAL + checkpointing    |
+| Ease of use     | Lower         | Higher                 |
+| Integration     | Limited       | Kafka, Delta, ML, JDBC |
+
+> FAANG tip: **Structured Streaming is preferred today.**
+
+---
+
+### Q3: What is a micro-batch in Spark Streaming?
+
+**Answer:**
+
+> “Spark divides the incoming data stream into small batches (e.g., every 1 second) and processes them like mini batch jobs.”
+
+---
+
+### Q4: What is watermarking?
+
+**Answer:**
+
+> “Watermarking helps handle late-arriving data by defining a threshold for event time processing. It allows Spark to drop old state and prevent memory leaks.”
+
+Example:
+
+```python
+df.withWatermark("event_time", "10 minutes")
+  .groupBy("user_id", window("event_time", "5 minutes"))
+  .count()
+```
+
+---
+
+### Q5: What is the difference between append, update, and complete output modes?
+
+| Mode     | Meaning           | When to use                                   |
+| -------- | ----------------- | --------------------------------------------- |
+| append   | Only new rows     | Stateless aggregations                        |
+| update   | Only updated rows | Aggregations with keys                        |
+| complete | Full output       | Full state aggregation (slow for large state) |
+
+---
+
+## **2️⃣ Kafka Integration**
+
+### Q6: How to read a Kafka stream in PySpark?
+
+```python
+df = (spark.readStream
+      .format("kafka")
+      .option("kafka.bootstrap.servers", "broker1:9092,broker2:9092")
+      .option("subscribe", "topic_name")
+      .option("startingOffsets", "earliest")
+      .load())
+```
+
+* `startingOffsets` = earliest / latest / JSON
+* Value comes as binary → decode with `.cast("string")`
+
+---
+
+### Q7: How to write back to Kafka?
+
+```python
+df.selectExpr("key", "value") \
+  .writeStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "broker1:9092") \
+  .option("topic", "output_topic") \
+  .option("checkpointLocation", "/mnt/checkpoints/topic") \
+  .start()
+```
+
+---
+
+### Q8: How to ensure exactly-once processing with Kafka?
+
+**Answer:**
+
+* Enable **checkpointing**
+* Use **write-ahead logs (WAL)**
+* Use Kafka’s **idempotent producer** for writes
+
+---
+
+### Q9: What is the difference between Kafka consumer groups and Spark Streaming?
+
+**Answer:**
+
+* Kafka consumer group → multiple consumers for a topic partition
+* Spark → parallelism determined by number of partitions + executors
+* Spark structured streaming manages offsets internally → can commit offsets automatically
+
+---
+
+### Q10: How to handle late events from Kafka?
+
+* Use **watermarking**
+* Drop or aggregate late events
+* Maintain **state with timeout**
+
+```python
+.withWatermark("event_time", "10 minutes")
+.groupBy("user_id", window("event_time", "5 minutes"))
+.count()
+```
+
+---
+
+## **3️⃣ Stateful Processing**
+
+### Q11: What is stateful streaming in PySpark?
+
+* Keeps track of state across micro-batches
+* Example: running totals per key
+
+```python
+df.groupBy("user_id").agg(sum("amount")).writeStream...
+```
+
+---
+
+### Q12: How does Spark manage state?
+
+* In memory + WAL checkpoint
+* Expire old keys with watermark or timeout
+
+---
+
+### Q13: Difference between mapWithState and updateStateByKey?
+
+| Feature              | mapWithState | updateStateByKey |
+| -------------------- | ------------ | ---------------- |
+| API                  | DStream      | DStream          |
+| Memory               | Efficient    | High memory      |
+| Structured Streaming | N/A          | N/A              |
+
+> Today, use **Structured Streaming + flatMapGroupsWithState** for advanced stateful streaming.
+
+---
+
+## **4️⃣ Windowed Aggregations**
+
+### Q14: How to do sliding windows in PySpark streaming?
+
+```python
+from pyspark.sql.functions import window
+
+df.groupBy(window("event_time", "5 minutes", "1 minute"), "user_id") \
+  .count()
+```
+
+* 5 min window, 1 min slide → overlapping windows
+
+---
+
+### Q15: How to deal with skew in streaming aggregation?
+
+* Repartition by key
+* Use **mapGroupsWithState** → avoid huge hot keys
+* Drop or isolate skewed keys
+
+---
+
+## **5️⃣ Checkpointing and Fault Tolerance**
+
+### Q16: Why is checkpointing important in structured streaming?
+
+* Recovery from failure
+* Maintain offsets for Kafka
+* Maintain state for stateful operations
+
+---
+
+### Q17: Where to store checkpoint files?
+
+* Durable storage: DBFS, S3, ADLS, HDFS
+
+---
+
+### Q18: Can you change checkpoint location mid-stream?
+
+* No → must restart with new location
+* Old checkpoints tie to application and query id
+
+---
+
+## **6️⃣ Performance Optimization**
+
+### Q19: How to optimize micro-batch streaming in PySpark?
+
+* Reduce batch size → lower latency
+* Increase parallelism → repartition large streams
+* Cache intermediate results
+* Avoid wide transformations (joins/aggregations) on huge datasets
+
+---
+
+### Q20: How to optimize Kafka reads in Spark?
+
+* Use **Kafka partitions = Spark partitions**
+* Use **startingOffsets = latest** in production
+* Tune **maxOffsetsPerTrigger** to control load
+
+---
+
+### Q21: How to monitor streaming jobs in Spark UI?
+
+* Check **Streaming tab** → input rate, processing time, backlog
+* Check **Stages** → long shuffle tasks indicate skew
+* Check **Tasks** → GC, disk spill
+
+---
+
+### Q22: What is backpressure in Spark Streaming?
+
+* When processing < input rate → backlog grows
+* Enable `spark.streaming.backpressure.enabled = True`
+* Dynamically reduces rate per partition
+
+---
+
+## **7️⃣ Real-World / Advanced Scenarios**
+
+### Q23: How to handle exactly-once join with Kafka streams and batch table?
+
+* Use **Structured Streaming + Delta table**
+* Use **merge with idempotency**
+* Enable **checkpointing**
+
+---
+
+### Q24: How to do multi-topic streaming in Kafka?
+
+```python
+df = spark.readStream.format("kafka") \
+    .option("subscribePattern", "topic_.*").load()
+```
+
+---
+
+### Q25: How to handle schema evolution in streaming Kafka + Delta?
+
+* Use Delta `mergeSchema=True`
+* Use `from_json` with evolving schema
+
+---
+
+### Q26: How to handle late-arriving events in windowed aggregations?
+
+* Use **watermarks** + `allowedLateness`
+* Maintain state until watermark threshold
+
+---
+
+### Q27: How to debug streaming latency?
+
+* Streaming tab: inputRows vs processedRows
+* Look for batch processing time > trigger interval → bottleneck
+* Check GC / disk spill
+
+---
+
+### Q28: How to handle failures in streaming pipelines?
+
+* Enable **checkpointing**
+* Set **write-ahead log** (WAL) for sinks like Kafka
+* Idempotent writes
+
+---
+
+### Q29: How to ensure end-to-end exactly-once semantics with Kafka + Delta Lake?
+
+* Use **Structured Streaming + Delta Sink**
+* Delta automatically handles idempotent updates with checkpointing
+
+---
+
+### Q30: How to scale streaming jobs in Databricks?
+
+* Increase **executors / cores**
+* Tune **trigger interval**
+* Repartition input stream to match number of partitions
+* Avoid single hot key in aggregation
+
+---
+
+# 🔥 FAANG INTERVIEW TIP – Streaming + Kafka
+
+* Always **map Spark UI metrics → pipeline performance**
+* Be ready to **explain watermarking, checkpointing, exactly-once semantics**
+* Show **you know PySpark structured streaming code + Kafka integration**
+* Bonus: mention **Delta Lake streaming sink** for idempotent writes
+
+---
